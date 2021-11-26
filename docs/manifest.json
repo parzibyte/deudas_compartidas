@@ -1,0 +1,17 @@
+{
+    "name": "Control de deudas y gastos",
+    "short_name": "Deudas y gastos",
+    "theme_color": "#ffe08a",
+    "background_color": "#ffe08a",
+    "display": "standalone",
+    "orientation": "portrait",
+    "scope": "./",
+    "start_url": "./",
+    "icons": [
+        {
+            "src": "./images/icono-512.png",
+            "type": "image/png",
+            "sizes": "512x512"
+        }
+    ]
+}
