@@ -58,26 +58,34 @@
       <table class="table is-bordered">
         <thead>
           <tr>
-            <th colspan="2" class="has-text-centered">Totales</th>
+            <th>Estado</th>
+            <th>Se liquida si</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="usuario in desglose()" :key="usuario.deudor.id">
+          <tr v-for="(dato, indice) in totalesSimples()" :key="indice">
             <td>
-              <strong>
-                {{ detallesDeUsuario(usuario.deudor.id).nombre }}</strong
-              >
+              {{ dato.deudor.nombre }} le debe {{ dato.debe | dinero }} a
+              {{ dato.acreedor.nombre }}; {{ dato.acreedor.nombre }} le debe
+              {{ dato.leDeben | dinero }} a {{ dato.deudor.nombre }}
             </td>
-            <td class="has-text-right">{{ usuario.monto | dinero }}</td>
+            <td>
+              <p v-if="dato.diferencia === 0">Ya está liquidado</p>
+              <p v-else-if="dato.diferencia > 0">
+                {{ dato.acreedor.nombre }} le da
+                {{ (dato.leDeben - dato.debe) | dinero }} a
+                {{ dato.deudor.nombre }}
+              </p>
+              <p v-else-if="dato.diferencia < 0">
+                {{ dato.deudor.nombre }} le da
+                {{ (dato.debe - dato.leDeben) | dinero }} a
+                {{ dato.acreedor.nombre }}
+              </p>
+            </td>
           </tr>
         </tbody>
-        <tfoot>
-          <tr>
-            <td><strong>Total</strong></td>
-            <td class="has-text-right">{{ totalDeuda() | dinero }}</td>
-          </tr>
-        </tfoot>
       </table>
+
       <b-table
         :data="deudas"
         :loading="cargando"
@@ -252,8 +260,90 @@ export default {
     async actualizarDeuda(deuda) {
       updateDoc(doc(this.bd, "deudas", deuda.id), deuda);
     },
+    totalesSimples() {
+      const totales = {};
+      for (const deuda of this.deudas) {
+        if (!totales[deuda.acreedor]) {
+          totales[deuda.acreedor] = {
+            acreedor: this.detallesDeUsuario(deuda.acreedor),
+            deudores: {},
+          };
+        }
+        for (const deudor of deuda.deudores) {
+          if (deuda.acreedor !== deudor.id) {
+            if (!totales[deuda.acreedor]["deudores"][deudor.id]) {
+              totales[deuda.acreedor]["deudores"][deudor.id] = {
+                deudor: this.detallesDeUsuario(deudor.id),
+                debe: 0,
+                leDeben: 0,
+                diferencia: 0,
+              };
+            }
+
+            if (!totales[deudor.id]) {
+              totales[deudor.id] = {
+                acreedor: this.detallesDeUsuario(deudor.id),
+                deudores: {},
+              };
+            }
+            if (!totales[deudor.id]["deudores"][deuda.acreedor]) {
+              totales[deudor.id]["deudores"][deuda.acreedor] = {
+                deudor: this.detallesDeUsuario(deuda.acreedor),
+                debe: 0,
+                leDeben: 0,
+                diferencia: 0,
+              };
+            }
+            if (!deudor.pagado && !deuda.eliminada) {
+              const montoIndividual = this.montoIndividual(deuda);
+              totales[deudor.id]["deudores"][deuda.acreedor].leDeben +=
+                montoIndividual;
+              totales[deudor.id]["deudores"][deuda.acreedor].diferencia +=
+                montoIndividual;
+              totales[deuda.acreedor]["deudores"][deudor.id].debe +=
+                montoIndividual;
+              totales[deuda.acreedor]["deudores"][deudor.id].diferencia -=
+                montoIndividual;
+            }
+          }
+        }
+      }
+      // Remover repetidos
+      for (const [clave, valor] of Object.entries(totales)) {
+        for (const [claveDeudor] of Object.entries(valor.deudores)) {
+          if (
+            totales[clave].deudores[claveDeudor] &&
+            totales[claveDeudor].deudores[clave]
+          ) {
+            delete totales[claveDeudor].deudores[clave];
+          }
+        }
+      }
+
+      // Remover vacíos
+      for (const [clave] of Object.entries(totales)) {
+        if (Object.keys(totales[clave].deudores).length === 0) {
+          delete totales[clave];
+        }
+      }
+      const otrosTotales = [];
+
+      for (const [, valor] of Object.entries(totales)) {
+        for (const [, otroValor] of Object.entries(valor.deudores)) {
+          otrosTotales.push({
+            acreedor: valor.acreedor,
+            deudor: otroValor.deudor,
+            debe: otroValor.debe,
+            leDeben: otroValor.leDeben,
+            diferencia: otroValor.diferencia,
+          });
+        }
+      }
+      return otrosTotales;
+    },
     desglose() {
       const deudores = {};
+
       for (const deuda of this.deudas) {
         for (const deudor of deuda.deudores) {
           if (!deudores[deudor.id]) {
